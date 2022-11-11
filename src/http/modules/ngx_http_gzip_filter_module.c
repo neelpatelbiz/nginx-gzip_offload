@@ -50,6 +50,7 @@ typedef struct {
 
     int                  wbits;
     int                  memlevel;
+	int					 body_chains;
 
     unsigned             flush:4;
     unsigned             redo:1;
@@ -274,6 +275,9 @@ ngx_http_gzip_header_filter(ngx_http_request_t *r)
     ngx_http_clear_accept_ranges(r);
     ngx_http_weak_etag(r);
 
+	/*Trim book-keeping*/
+	ctx->body_chains=0;
+
     return ngx_http_next_header_filter(r);
 }
 
@@ -283,18 +287,44 @@ ngx_http_gzip_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 {
     int                   rc;
     ngx_http_gzip_ctx_t  *ctx;
+	ngx_chain_t *cl;
+	//ngx_buf_t *b;
+	int found_last = 0, buf_ctr = 1;
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_gzip_filter_module);
+	ctx->body_chains++;
 
     if (ctx == NULL || r->header_only) {
         return ngx_http_next_body_filter(r, in);
     }
-
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "http gzip filter");
 
+	//b=ngx_calloc_buf(r->pool);
+	for ( cl=in;cl;cl=cl->next ){
+		/*Compy Copy*/
+		//ngx_memcpy(b->pos, cl->buf->pos, ngx_buf_size(cl->buf));
+		//b->pos = (u_char *) "Buf_Marker";
 
-	rc=ngx_http_next_body_filter(r, in);;
+		/*Trim book-keeping*/
+		ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+					   "b_chains: %d, bufs: %d , size: %d", ctx->body_chains, buf_ctr, ngx_buf_size(cl->buf));
+		buf_ctr++;
+		if (cl->buf->last_buf)
+			found_last=1;
+		if(cl->next==NULL)
+			break;
+	}
+	
+	if (found_last && ctx->body_chains==0){
+		ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+					   "found last on entrance %d", ctx->body_chains );
+
+	}
+
+
+
+	rc=ngx_http_next_body_filter(r, in);
 
     return rc;
 }
